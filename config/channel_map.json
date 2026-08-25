@@ -1,0 +1,114 @@
+{
+    "_comment": "Prop Material Creator channel map. Edit by hand. 'aliases' are matched case-insensitively against the suffix after the last separator in a texture filename (e.g. body_dif.png -> suffix 'dif'). 'colorspace' is one of: srgb, raw. 'mtlx_input' is the mtlxstandard_surface input the texture feeds. 'via' optionally routes through a helper node (mtlxnormalmap / mtlxbump) before the surface input.",
+
+    "channels": {
+        "base_color": {
+            "aliases": ["basecolor", "base_color", "bc", "b", "albedo", "dif", "diff", "diffuse", "color", "col", "d"],
+            "colorspace": "srgb",
+            "mtlx_input": "base_color",
+            "signature": "color3"
+        },
+        "roughness": {
+            "aliases": ["refl", "rough", "roughness", "rgh", "gloss", "r"],
+            "colorspace": "raw",
+            "mtlx_input": "specular_roughness",
+            "signature": "float"
+        },
+        "metalness": {
+            "aliases": ["metal", "metallic", "metalness", "mtl", "met", "m"],
+            "colorspace": "raw",
+            "mtlx_input": "metalness",
+            "signature": "float"
+        },
+        "specular": {
+            "aliases": ["spec", "specular", "s"],
+            "colorspace": "raw",
+            "mtlx_input": "specular",
+            "signature": "float"
+        },
+        "normal": {
+            "aliases": ["nrm", "normal", "norm", "nor", "n"],
+            "colorspace": "raw",
+            "mtlx_input": "normal",
+            "signature": "vector3",
+            "via": "mtlxnormalmap"
+        },
+        "bump": {
+            "aliases": ["bump", "bmp", "height", "hgt"],
+            "colorspace": "raw",
+            "mtlx_input": "normal",
+            "signature": "float",
+            "via": "mtlxbump"
+        },
+        "opacity": {
+            "aliases": ["opacity", "opac", "alpha", "mask"],
+            "colorspace": "raw",
+            "mtlx_input": "opacity",
+            "signature": "color3"
+        },
+        "emission": {
+            "aliases": ["emis", "emission", "emissive", "emit", "glow"],
+            "colorspace": "srgb",
+            "mtlx_input": "emission_color",
+            "signature": "color3"
+        },
+        "ao": {
+            "aliases": ["ao", "ambientocclusion", "occ", "occlusion"],
+            "colorspace": "raw",
+            "mtlx_input": "_ao_multiply_base",
+            "signature": "float"
+        }
+    },
+
+    "material_presets": {
+        "_comment": "Default materials for geometry slots that have NO textures in the folder but whose slot name matches a preset. 'match' lists slot-name aliases (case-insensitive, matched like channel aliases). 'params' are mtlxstandard_surface parameters: a number sets a float input, a 3-list sets a color input. Textures always win over presets.",
+        "glass": {
+            "match": ["glass", "steklo", "lens", "linza"],
+            "params": {
+                "transmission": 1.0,
+                "specular_roughness": 0.0,
+                "base": 0.0,
+                "specular_IOR": 1.5
+            }
+        },
+        "metall": {
+            "match": ["metall", "metal", "chrome", "steel", "iron"],
+            "params": {
+                "metalness": 1.0,
+                "base_color": [0.8, 0.1, 0.1],
+                "specular_roughness": 0.25
+            }
+        },
+        "white_plastic": {
+            "match": ["white_plastic", "whiteplastic", "plastic", "plastik"],
+            "params": {
+                "base_color": [0.9, 0.9, 0.9],
+                "specular_roughness": 0.5,
+                "metalness": 0.0
+            }
+        }
+    },
+
+    "texture_exts": [".png", ".tif", ".tiff", ".exr", ".jpg", ".jpeg", ".tga"],
+
+    "alias_priority": {
+        "_comment": "When two files map to the SAME channel for one material (e.g. a diffuse AND a basecolor both feeding base_color), the one whose matched alias has the higher number wins. Aliases not listed default to 0.",
+        "dif": 10,
+        "diff": 10,
+        "diffuse": 10,
+        "d": 10,
+        "albedo": 6,
+        "basecolor": 5,
+        "base_color": 5,
+        "bc": 5,
+        "b": 5,
+        "color": 4,
+        "col": 4
+    },
+
+    "parsing": {
+        "separators": ["_", "."],
+        "case_sensitive": false,
+        "note": "Material name = filename stem with the trailing channel-suffix token removed. body_dif -> material 'body'. button_bump -> material 'button'."
+    }
+}

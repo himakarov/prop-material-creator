@@ -1,0 +1,26 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+
+# Houdini junk
+*.hip
+*.hiplc
+*.hipnc
+backup/
+*.rat
+*.bgeo
+*.bgeo.sc
+houdini.env
+*.pyc
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*~

@@ -1,0 +1,59 @@
+name: Release
+
+# Cut a release whenever a version tag is pushed, e.g.:
+#   git tag v1.3.0 && git push origin v1.3.0
+# The job packs the package into a zip laid out exactly as it must sit in
+# Houdini's packages/ folder, then attaches it to a GitHub Release. The tool's
+# self-updater downloads that zip asset and overwrites the local files.
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Verify tag matches VERSION
+        run: |
+          TAG="${GITHUB_REF_NAME#v}"
+          FILE="$(cat VERSION | tr -d '[:space:]')"
+          echo "tag=$TAG file=$FILE"
+          if [ "$TAG" != "$FILE" ]; then
+            echo "::error::Tag ($TAG) does not match VERSION file ($FILE)"
+            exit 1
+          fi
+
+      - name: Build package zip
+        run: |
+          NAME="PropMaterialCreator"
+          STAGE="dist/$NAME"
+          mkdir -p "$STAGE"
+          # copy the package contents (everything except VCS/CI/dev cruft)
+          rsync -a \
+            --exclude '.git' \
+            --exclude '.github' \
+            --exclude 'dist' \
+            --exclude '__pycache__' \
+            --exclude '*.pyc' \
+            ./ "$STAGE/"
+          # the package .json belongs one level ABOVE the package folder
+          if [ -f "$STAGE/prop_material_creator.json" ]; then
+            mv "$STAGE/prop_material_creator.json" dist/
+          fi
+          cd dist
+          zip -r "${NAME}.zip" "$NAME" prop_material_creator.json
+          ls -la
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/PropMaterialCreator.zip
+          generate_release_notes: true

@@ -1,0 +1,8 @@
+{
+    "env": [
+        { "PROPMAT_ROOT": "$HOUDINI_PACKAGE_PATH/PropMaterialCreator" },
+        { "PYTHONPATH": { "value": "$PROPMAT_ROOT/python", "method": "prepend" } },
+        { "HOUDINI_UI_ICON_PATH": { "value": "$PROPMAT_ROOT/config/Icons", "method": "prepend" } }
+    ],
+    "path": "$PROPMAT_ROOT"
+}
