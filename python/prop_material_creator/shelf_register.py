@@ -17,7 +17,7 @@ SHELF_LABEL = "CGA Tools"
 # --- this tool's button ---
 TOOL_NAME = "cga_propmat_build"
 TOOL_LABEL = "Prop Mat"
-TOOL_ICON = "prop_mat"   # resolved via HOUDINI_UI_ICON_PATH; falls back if missing
+TOOL_ICON = "prop_mat_icon"   # resolved via HOUDINI_UI_ICON_PATH; falls back if missing
 TOOL_HELP = "Prop Material Creator - auto-build Karma materials for a single FBX prop."
 TOOL_SCRIPT = "from prop_material_creator import ui\nui.show()"
 
