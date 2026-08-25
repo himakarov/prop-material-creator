@@ -1,5 +1,8 @@
 # Changelog
 
+## 1.3.1
+- Bundled shelf icon
+
 ## 1.3.0
 - Self-update. "Check for updates" pulls the latest GitHub release, and if it's
   newer, downloads and overwrites the local package files; "Changelog" shows
