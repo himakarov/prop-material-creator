@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.4.0
+- SpeedTree support. Base color maps exported without a channel suffix (Bark_Base.png, Knot_01.png) are now recognised: a two-pass scan assigns each unsuffixed file to base color, merging it with the material's suffixed maps (Bark_Base_Normal -> material 'Bark_Base'). An explicit _diffuse/_basecolor still wins if both exist. Toggle with "unsuffixed_is_base_color" in the channel map's "parsing" block (default on).
+- Added subsurface channels: subsurface_color (_SubsurfaceColor) and subsurface (_SubsurfaceAmount), so SpeedTree foliage/moss SSS maps land on the right inputs instead of spawning junk materials.
+
 ## 1.3.1
 - Bundled shelf icon
 

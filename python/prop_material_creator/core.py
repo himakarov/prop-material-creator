@@ -89,6 +89,9 @@ def _split_stem(stem, cfg):
             if ch:
                 return material.strip("".join(cfg.separators)), ch, base
 
+    # No channel suffix recognised. Do NOT guess here - scan_textures handles
+    # the SpeedTree unsuffixed-base-color case in a second pass, where it can
+    # see which stems line up with materials that DO have suffixed maps.
     return None, None, None
 
 
@@ -110,25 +113,53 @@ def scan_textures(folder, cfg):
     except Exception as exc:
         return {}, ["<cannot list folder: %s>" % exc]
 
-    for fname in entries:
-        stem, ext = os.path.splitext(fname)
-        if ext.lower() not in cfg.texture_exts:
-            continue
+    tex_files = [f for f in entries
+                 if os.path.splitext(f)[1].lower() in cfg.texture_exts]
+
+    # -- pass 1: files with a recognised channel suffix --------------------
+    leftover = []
+    for fname in tex_files:
+        stem, _ext = os.path.splitext(fname)
         material, channel, alias = _split_stem(stem, cfg)
         if not material or not channel:
-            unrecognised.append(fname)
+            leftover.append(fname)   # decide in pass 2
             continue
         full = os.path.join(folder, fname).replace("\\", "/")
         materials.setdefault(material, {})
         key = (material, channel)
         if channel in materials[material]:
-            # conflict: keep the higher-priority alias
             if cfg.alias_priority(alias) > cfg.alias_priority(chosen_alias.get(key)):
                 materials[material][channel] = full
                 chosen_alias[key] = alias
         else:
             materials[material][channel] = full
             chosen_alias[key] = alias
+
+    # -- pass 2: unsuffixed files -> base color ----------------------------
+    # SpeedTree leaves the base color map with no channel tag (Bark_Base.png,
+    # Knot_01.png) while every other channel IS tagged. A leftover whose stem
+    # matches a material we already found from its suffixed maps is that
+    # material's base color; a leftover that matches nothing is a standalone
+    # single-texture material (a prop with only a color map). Either way it's
+    # base color - never a junk channel. An explicit _diffuse/_basecolor from
+    # pass 1 already sits in base_color and wins (this only fills, never
+    # overwrites).
+    if cfg.unsuffixed_is_base_color:
+        norm_known = {_norm(m): m for m in materials.keys()}
+        for fname in leftover:
+            stem, _ext = os.path.splitext(fname)
+            mat = stem.strip("".join(cfg.separators))
+            if not mat:
+                unrecognised.append(fname)
+                continue
+            target = norm_known.get(_norm(mat), mat)
+            full = os.path.join(folder, fname).replace("\\", "/")
+            materials.setdefault(target, {})
+            if "base_color" not in materials[target]:
+                materials[target]["base_color"] = full
+                chosen_alias[(target, "base_color")] = "__unsuffixed__"
+    else:
+        unrecognised.extend(leftover)
 
     return _filter_foreign(materials), unrecognised
 

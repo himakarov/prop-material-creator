@@ -41,6 +41,12 @@ class Config(object):
         parsing = data.get("parsing", {})
         self.separators = parsing.get("separators", ["_", "."])
         self.case_sensitive = bool(parsing.get("case_sensitive", False))
+        # SpeedTree (and some other exporters) leave the base color map with NO
+        # channel suffix: Bark_Base.png / Knot_01.png, while every other channel
+        # IS suffixed. When on, a file whose tail matches no known channel alias
+        # is treated as base color and its whole stem becomes the material name.
+        self.unsuffixed_is_base_color = bool(
+            parsing.get("unsuffixed_is_base_color", True))
 
         # alias -> priority for resolving two maps that feed the same channel
         # (basecolor beats diffuse). Unlisted aliases default to 0.

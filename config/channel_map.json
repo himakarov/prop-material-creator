@@ -52,6 +52,18 @@
             "mtlx_input": "emission_color",
             "signature": "color3"
         },
+        "subsurface_color": {
+            "aliases": ["subsurfacecolor", "ssscolor", "sss_color", "sssc", "subcolor"],
+            "colorspace": "srgb",
+            "mtlx_input": "subsurface_color",
+            "signature": "color3"
+        },
+        "subsurface": {
+            "aliases": ["subsurfaceamount", "sssamount", "sss_amount", "subsurface", "sss", "scatter"],
+            "colorspace": "raw",
+            "mtlx_input": "subsurface",
+            "signature": "float"
+        },
         "ao": {
             "aliases": ["ao", "ambientocclusion", "occ", "occlusion"],
             "colorspace": "raw",
