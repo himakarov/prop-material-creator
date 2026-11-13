@@ -1,6 +1,6 @@
 """Prop Material Creator - Karma material builder for single FBX props."""
 
-__version__ = "1.4.0"
+__version__ = "1.5.0"
 
 from . import core   # noqa: F401
 from . import ui     # noqa: F401

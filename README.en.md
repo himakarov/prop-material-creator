@@ -81,8 +81,17 @@ A geometry slot with no textures whose name matches a preset (`glass`,
 ## Matching
 
 Material → geometry matching runs in order: exact name (case-insensitive) →
-normalised fuzzy (separators stripped) → prefix containment. Unmatched
-geometry and unused materials are reported after each build.
+normalised fuzzy (separators stripped) → prefix containment → shared words
+and index number in any order (`mtl_wall6` ↔ `6_wall`, for locations). Pairs
+found by the last level are listed separately in the report so you can check
+them. Unmatched geometry and unused materials are reported after each build.
+
+## Normals from color
+
+The **Generate normals from base color** checkbox: a material that has a color
+map but no normal/bump map of its own gets a normal derived from the color's
+luminance (`mtlxbump`). Together with **Add intensity controls** the material
+gets a **Normal Strength** parameter (default 0.02).
 
 ## Updating
 

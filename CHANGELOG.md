@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.5.0
+- Locations: slots and textures named differently now match. A new last matching level compares the words and the index number regardless of order (mtl_wall6 <-> 6_wall, mtl_props10 <-> 10_atlas_props, mtl_sand <-> sand). When both names carry a number the numbers must agree. Pairs found this way are listed in the build report under "Matched by similar name - please check".
+- Fixed materials whose name starts with a digit collapsing into one USD material (1_atlas_props and 9_atlas_props became the same prim). Such materials now get a "mat_" prefix (mat_6_wall).
+- New option "Generate normals from base color": a material with a color map but no normal/bump map gets a normal derived from the color's luminance (mtlxbump). With "Add intensity controls" on, the material gets a "Normal Strength" parameter (default 0.02, range 0-0.2).
+
 ## 1.4.0
 - SpeedTree support. Base color maps exported without a channel suffix (Bark_Base.png, Knot_01.png) are now recognised: a two-pass scan assigns each unsuffixed file to base color, merging it with the material's suffixed maps (Bark_Base_Normal -> material 'Bark_Base'). An explicit _diffuse/_basecolor still wins if both exist. Toggle with "unsuffixed_is_base_color" in the channel map's "parsing" block (default on).
 - Added subsurface channels: subsurface_color (_SubsurfaceColor) and subsurface (_SubsurfaceAmount), so SpeedTree foliage/moss SSS maps land on the right inputs instead of spawning junk materials.

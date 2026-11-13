@@ -262,13 +262,43 @@ def _promote_color(sub, parm_name, label, default=(1.0, 1.0, 1.0)):
         return None
 
 
-def _build_material(matlib, mat_name, channels, cfg, add_controls=False):
+# Bump scale used for a normal generated from the base color map. The height
+# is the map's luminance (0..1), so this is the relief depth in scene units.
+GENERATED_NORMAL_SCALE = 0.02
+
+
+def _generate_normal(sub, surface, base_color_img, add_controls):
+    """Drive the surface normal from the base color map: its luminance is used
+    as a height field through mtlxbump. For assets shipped with color maps
+    only. With add_controls the bump scale is promoted to the subnet as
+    'Normal Strength'."""
+    lum = sub.createNode("mtlxluminance", "generated_height_luminance")
+    lum.setInput(0, base_color_img)
+    height = sub.createNode("mtlxseparate3c", "generated_height")
+    height.setInput(0, lum)
+    bump = sub.createNode("mtlxbump", "generated_normal")
+    bump.setNamedInput("height", height, "outr")
+    bump.parm("scale").set(GENERATED_NORMAL_SCALE)
+    surface.setNamedInput("normal", bump, 0)
+    if add_controls:
+        pn = _promote_float(sub, "normal_strength", "Normal Strength",
+                            default=GENERATED_NORMAL_SCALE,
+                            minv=0.0, maxv=GENERATED_NORMAL_SCALE * 10.0)
+        if pn:
+            bump.parm("scale").setExpression('ch("../%s")' % pn)
+    return bump
+
+
+def _build_material(matlib, mat_name, channels, cfg, add_controls=False,
+                    generate_normals=False):
     """Build one mtlxstandard_surface subnet named mat_name.
     channels: dict[channel_name] -> filepath.
     add_controls: if True, insert per-channel multiply nodes and promote their
     factors to spare parameters on the subnet, so intensity can be tuned from
-    the material's own parameter panel without diving inside."""
-    sub = matlib.createNode("subnet", mat_name)
+    the material's own parameter panel without diving inside.
+    generate_normals: if True and the material has a base color map but no
+    normal/bump map, derive the normal from the base color."""
+    sub = matlib.createNode("subnet", _sanitize_node_name(mat_name, "mat_"))
     out = sub.createNode("subnetconnector", "surface_output")
     out.parm("connectorkind").set("output")
     out.parm("parmname").set("surface")
@@ -278,6 +308,7 @@ def _build_material(matlib, mat_name, channels, cfg, add_controls=False):
     surface = sub.createNode("mtlxstandard_surface", "mtlxstandard_surface")
     out.setInput(0, surface)
 
+    img_nodes = {}
     # Deterministic order so graphs look the same every build.
     for channel in sorted(channels.keys()):
         filepath = channels[channel]
@@ -298,6 +329,7 @@ def _build_material(matlib, mat_name, channels, cfg, add_controls=False):
         _set_parm(img, ["signature"], signature)
         _set_parm(img, ["filecolorspace", "colorspace"],
                   "Raw" if colorspace == "raw" else "srgb_texture")
+        img_nodes[channel] = img
 
         if internal_only:
             continue
@@ -366,6 +398,13 @@ def _build_material(matlib, mat_name, channels, cfg, add_controls=False):
                 node_to_input = mult
             surface.setNamedInput(mtlx_input, node_to_input, 0)
 
+    if generate_normals and "base_color" in img_nodes:
+        has_normal = any(cfg.channel(ch).get("mtlx_input") == "normal"
+                         for ch in img_nodes)
+        if not has_normal:
+            _generate_normal(sub, surface, img_nodes["base_color"],
+                             add_controls)
+
     # Always-on Specular control: if there was no specular texture, promote a
     # parameter that drives the surface's specular value directly (there's no
     # map to multiply). If a specular map WAS present, it already got a
@@ -400,7 +439,7 @@ def _build_preset_material(matlib, mat_name, params):
     """Build an mtlxstandard_surface subnet from preset PARAMETERS (no
     textures). params: dict of mtlxstandard_surface input -> number or 3-list.
     A number sets a float parm; a 3-list sets a color parm."""
-    sub = matlib.createNode("subnet", mat_name)
+    sub = matlib.createNode("subnet", _sanitize_node_name(mat_name, "mat_"))
     out = sub.createNode("subnetconnector", "surface_output")
     out.parm("connectorkind").set("output")
     out.parm("parmname").set("surface")
@@ -523,14 +562,70 @@ def collect_geo(stage, scope_path):
     return items
 
 
-def match_pairs(geo_items, material_names, cfg=None):
+# Words that carry no identity in a slot / texture name.
+_NOISE_TOKENS = frozenset((
+    "mtl", "mat", "material", "shop", "materialpath", "tex", "texture", "map",
+))
+
+
+def _name_tokens(name):
+    """Split a name into (words, numbers) for order-independent comparison.
+    Splits on separators and on letter/digit boundaries, drops noise words,
+    strips a plural 's' and leading zeros:
+      mtl_wall6 -> ({'wall'}, {'6'}) ; 7_walls -> ({'wall'}, {'7'})
+      '07 - water' -> ({'water'}, {'7'})."""
+    import re as _re
+    words, numbers = set(), set()
+    for tok in _re.findall(r"[a-z]+|\d+", name.lower()):
+        if tok.isdigit():
+            numbers.add(tok.lstrip("0") or "0")
+            continue
+        if len(tok) > 3 and tok.endswith("s") and not tok.endswith("ss"):
+            tok = tok[:-1]
+        if len(tok) < 2 or tok in _NOISE_TOKENS:
+            continue
+        words.add(tok)
+    return words, numbers
+
+
+def _token_match(slot_name, material_names):
+    """Best material for a slot by shared tokens, or None.
+    Location exports name the slot and its texture differently
+    (mtl_wall6 <-> 6_wall, mtl_props10 <-> 10_atlas_props), so compare the
+    words and the index number regardless of order. A shared word outweighs a
+    shared number; when both names carry numbers they must agree, so
+    mtl_props1 never lands on 10_atlas_props."""
+    slot_words, slot_numbers = _name_tokens(slot_name)
+    if not slot_words and not slot_numbers:
+        return None
+    best, best_key = None, None
+    for mat in sorted(material_names):
+        mat_words, mat_numbers = _name_tokens(mat)
+        if slot_numbers and mat_numbers and not (slot_numbers & mat_numbers):
+            continue
+        shared_words = len(slot_words & mat_words)
+        shared_numbers = len(slot_numbers & mat_numbers)
+        score = 3 * shared_words + 2 * shared_numbers
+        if score <= 0:
+            continue
+        # on equal score prefer the material with fewer extra tokens
+        extra = len(mat_words - slot_words) + len(mat_numbers - slot_numbers)
+        key = (score, -extra)
+        if best_key is None or key > best_key:
+            best, best_key = mat, key
+    return best
+
+
+def match_pairs(geo_items, material_names, cfg=None, guessed=None):
     """Match geometry to built materials.
     Levels:
       - Single material: assign it to every geometry item, ignoring names,
         EXCEPT slots that match a preset (glass, metall, ...) - those are left
         unmatched so the preset pass can claim them.
       - Several materials: match by name - exact (case-insensitive) ->
-        normalised fuzzy -> prefix containment.
+        normalised fuzzy -> prefix containment -> shared tokens.
+    guessed: optional list; receives (slot_name, material) for every pair
+    found only by the shared-token level, so the UI can ask the user to check.
     Returns (pairs, unmatched_geo, unused_materials)."""
 
     def _has_preset(name):
@@ -589,6 +684,10 @@ def match_pairs(geo_items, material_names, cfg=None):
         mat = None
         if not _is_garbage_name(candidate):
             mat = find_mat(candidate)
+            if not mat and not _has_preset(name):
+                mat = _token_match(candidate, material_names)
+                if mat and guessed is not None:
+                    guessed.append((candidate, mat))
         if mat:
             pairs.append((path, mat))
             used.add(mat)
@@ -666,17 +765,18 @@ def _assign_materials(stage_node, matlib, pairs, material_paths, name_hint=""):
 # ---------------------------------------------------------------------------
 # Main entry
 # ---------------------------------------------------------------------------
-def _sanitize_node_name(name):
-    """Make a string safe for a Houdini node name: keep alnum and underscore,
-    collapse the rest to underscore, trim, ensure it doesn't start with a
-    digit."""
+def _sanitize_node_name(name, digit_prefix="prop_"):
+    """Make a string safe for a Houdini node name AND a USD prim name: keep
+    alnum and underscore, collapse the rest to underscore, trim, ensure it
+    doesn't start with a digit. USD replaces a leading digit with '_', which
+    makes 1_atlas and 9_atlas the same prim - hence the prefix."""
     import re as _re
     safe = _re.sub(r"[^0-9A-Za-z_]", "_", name).strip("_")
     safe = _re.sub(r"_+", "_", safe)
     if not safe:
-        return "prop"
+        return digit_prefix.rstrip("_") or "prop"
     if safe[0].isdigit():
-        safe = "prop_" + safe
+        safe = digit_prefix + safe
     return safe
 
 
@@ -715,7 +815,8 @@ def _prop_name_from_stage(anchor):
 
 
 def build(anchor_path, textures_folder, scope_path="", assign=True,
-          config_path=None, prop_name=None, add_controls=False):
+          config_path=None, prop_name=None, add_controls=False,
+          generate_normals=False):
     """Build materials for one prop.
 
     anchor_path     : LOP node in /stage to chain matlib/assign below
@@ -725,6 +826,8 @@ def build(anchor_path, textures_folder, scope_path="", assign=True,
                       single prop when several live under one node ('' = all).
     prop_name       : optional name for the created nodes (e.g. the prop's
                       mesh name). Falls back to the textures folder name.
+    generate_normals: derive a normal from the base color map for materials
+                      that have no normal/bump map of their own.
     Returns a stats dict for the UI.
     """
     cfg, cfg_warn = _config.load_config(config_path)
@@ -775,11 +878,17 @@ def build(anchor_path, textures_folder, scope_path="", assign=True,
     except Exception:
         pass
 
+    # `created` holds the names as scanned from the textures (used for
+    # matching and the report); node_name_for maps each to the node Houdini
+    # actually made, which is also the USD prim name.
     created = []
+    node_name_for = {}
     for mat_name in sorted(materials.keys()):
-        _build_material(matlib, mat_name, materials[mat_name], cfg,
-                        add_controls=add_controls)
+        sub = _build_material(matlib, mat_name, materials[mat_name], cfg,
+                              add_controls=add_controls,
+                              generate_normals=generate_normals)
         created.append(mat_name)
+        node_name_for[mat_name] = sub.name()
 
     matlib.layoutChildren()
     matlib.setDisplayFlag(True)
@@ -789,6 +898,7 @@ def build(anchor_path, textures_folder, scope_path="", assign=True,
     material_paths = {}
     assign_node = None
     preset_created = []
+    guessed = []
     if assign and created:
         # Force the materiallibrary to cook so its Material prims exist on the
         # stage before we read their real paths and match geometry.
@@ -799,7 +909,8 @@ def build(anchor_path, textures_folder, scope_path="", assign=True,
 
         lib_stage = matlib.stage()
         geo_items = collect_geo(lib_stage, scope_path)
-        pairs, unmatched, unused = match_pairs(geo_items, created, cfg)
+        pairs, unmatched, unused = match_pairs(geo_items, created, cfg,
+                                               guessed)
 
         # --- presets: for geometry that got no textured material but whose
         #     slot name matches a preset (glass, metall, ...), build a default
@@ -817,9 +928,10 @@ def build(anchor_path, textures_folder, scope_path="", assign=True,
                 continue
             # build the preset material once, reuse for all matching slots
             if pname not in preset_mat_for:
-                _build_preset_material(matlib, pname, params)
+                psub = _build_preset_material(matlib, pname, params)
                 preset_mat_for[pname] = pname
                 preset_created.append(pname)
+                node_name_for[pname] = psub.name()
             preset_pairs.append((path, pname))
 
         if preset_created:
@@ -831,7 +943,10 @@ def build(anchor_path, textures_folder, scope_path="", assign=True,
 
         all_created = created + preset_created
         all_pairs = pairs + preset_pairs
-        material_paths = _resolve_material_paths(matlib, all_created)
+        node_paths = _resolve_material_paths(
+            matlib, [node_name_for[m] for m in all_created])
+        material_paths = {m: node_paths[node_name_for[m]]
+                          for m in all_created}
         assign_node = _assign_materials(stage, matlib, all_pairs,
                                         material_paths, prop_hint)
         assigned = len(all_pairs)
@@ -855,6 +970,7 @@ def build(anchor_path, textures_folder, scope_path="", assign=True,
         "created": created,
         "preset_created": preset_created,
         "assigned": assigned,
+        "guessed": sorted(set(guessed)),
         "unmatched": sorted(set(unmatched)),
         "unused_materials": unused,
         "unrecognised": unrecognised,

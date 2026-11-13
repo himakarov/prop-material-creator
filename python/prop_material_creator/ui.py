@@ -92,6 +92,11 @@ class PropMaterialDialog(QtWidgets.QDialog):
         self.controls_check.setChecked(False)
         layout.addWidget(self.controls_check)
 
+        self.normals_check = QtWidgets.QCheckBox(
+            "Generate normals from base color (materials without a normal map)")
+        self.normals_check.setChecked(False)
+        layout.addWidget(self.normals_check)
+
         # 4. build + report
         self.build_btn = QtWidgets.QPushButton("Build")
         self.build_btn.setMinimumHeight(34)
@@ -243,6 +248,7 @@ class PropMaterialDialog(QtWidgets.QDialog):
                 assign=self.assign_check.isChecked(),
                 prop_name=prop_name,
                 add_controls=self.controls_check.isChecked(),
+                generate_normals=self.normals_check.isChecked(),
             )
         except Exception as exc:
             import traceback
@@ -288,6 +294,10 @@ class PropMaterialDialog(QtWidgets.QDialog):
             lines.append("Preset material(s) for untextured slots: "
                          + ", ".join(result["preset_created"]))
         lines.append("Assigned to %d prim(s)." % result["assigned"])
+        if result.get("guessed"):
+            lines.append("Matched by similar name - please check:")
+            for slot, mat in result["guessed"]:
+                lines.append("    %s -> %s" % (slot, mat))
         if result.get("unused_materials"):
             lines.append("No geometry matched: "
                          + ", ".join(result["unused_materials"]))
