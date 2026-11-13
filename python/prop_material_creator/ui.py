@@ -97,6 +97,11 @@ class PropMaterialDialog(QtWidgets.QDialog):
         self.normals_check.setChecked(False)
         layout.addWidget(self.normals_check)
 
+        self.alpha_check = QtWidgets.QCheckBox(
+            "Use base color alpha as opacity (decals, foliage)")
+        self.alpha_check.setChecked(False)
+        layout.addWidget(self.alpha_check)
+
         # 4. build + report
         self.build_btn = QtWidgets.QPushButton("Build")
         self.build_btn.setMinimumHeight(34)
@@ -249,6 +254,7 @@ class PropMaterialDialog(QtWidgets.QDialog):
                 prop_name=prop_name,
                 add_controls=self.controls_check.isChecked(),
                 generate_normals=self.normals_check.isChecked(),
+                alpha_opacity=self.alpha_check.isChecked(),
             )
         except Exception as exc:
             import traceback
@@ -294,6 +300,9 @@ class PropMaterialDialog(QtWidgets.QDialog):
             lines.append("Preset material(s) for untextured slots: "
                          + ", ".join(result["preset_created"]))
         lines.append("Assigned to %d prim(s)." % result["assigned"])
+        if result.get("alpha_opacity"):
+            lines.append("Opacity from base color alpha: "
+                         + ", ".join(result["alpha_opacity"]))
         if result.get("guessed"):
             lines.append("Matched by similar name - please check:")
             for slot, mat in result["guessed"]:

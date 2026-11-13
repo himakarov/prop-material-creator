@@ -289,15 +289,53 @@ def _generate_normal(sub, surface, base_color_img, add_controls):
     return bump
 
 
+def _has_transparent_alpha(filepath):
+    """True when the image has an alpha channel that is not fully opaque.
+    Many color maps carry an all-white alpha; wiring those to opacity would
+    only slow the render. If the file can't be inspected, assume it does -
+    the caller only asks when the user opted in."""
+    try:
+        import OpenImageIO as oiio
+        buf = oiio.ImageBuf(filepath)
+        alpha_index = buf.spec().alpha_channel
+        if buf.has_error or buf.spec().nchannels == 0:
+            return True
+        if alpha_index < 0:
+            return False
+        stats = oiio.ImageBufAlgo.computePixelStats(buf)
+        return stats.min[alpha_index] < 0.999
+    except Exception:
+        return True
+
+
+def _alpha_to_opacity(sub, surface, filepath):
+    """Feed the alpha channel of the base color map into the surface opacity
+    (decals, foliage, water). The color image node reads RGB only, so a second
+    image node reads the same file as color4 and its alpha is split off."""
+    img = sub.createNode("mtlximage", "img_base_color_alpha")
+    img.parm("file").set(filepath)
+    _set_parm(img, ["signature"], "color4")
+    _set_parm(img, ["filecolorspace", "colorspace"], "Raw")
+    split = sub.createNode("mtlxseparate4c", "base_color_alpha")
+    split.setInput(0, img)
+    to_color = sub.createNode("mtlxconvert", "opacity_from_alpha")
+    _set_parm(to_color, ["signature"], "floatcolor3")
+    to_color.setNamedInput("in", split, "outa")
+    surface.setNamedInput("opacity", to_color, 0)
+    return to_color
+
+
 def _build_material(matlib, mat_name, channels, cfg, add_controls=False,
-                    generate_normals=False):
+                    generate_normals=False, alpha_opacity=False):
     """Build one mtlxstandard_surface subnet named mat_name.
     channels: dict[channel_name] -> filepath.
     add_controls: if True, insert per-channel multiply nodes and promote their
     factors to spare parameters on the subnet, so intensity can be tuned from
     the material's own parameter panel without diving inside.
     generate_normals: if True and the material has a base color map but no
-    normal/bump map, derive the normal from the base color."""
+    normal/bump map, derive the normal from the base color.
+    alpha_opacity: if True and the material has no opacity map, use the base
+    color map's alpha channel as opacity (only when it is not fully opaque)."""
     sub = matlib.createNode("subnet", _sanitize_node_name(mat_name, "mat_"))
     out = sub.createNode("subnetconnector", "surface_output")
     out.parm("connectorkind").set("output")
@@ -405,6 +443,12 @@ def _build_material(matlib, mat_name, channels, cfg, add_controls=False,
             _generate_normal(sub, surface, img_nodes["base_color"],
                              add_controls)
 
+    if alpha_opacity and "base_color" in img_nodes:
+        has_opacity = any(cfg.channel(ch).get("mtlx_input") == "opacity"
+                          for ch in img_nodes)
+        if not has_opacity and _has_transparent_alpha(channels["base_color"]):
+            _alpha_to_opacity(sub, surface, channels["base_color"])
+
     # Always-on Specular control: if there was no specular texture, promote a
     # parameter that drives the surface's specular value directly (there's no
     # map to multiply). If a specular map WAS present, it already got a
@@ -426,6 +470,22 @@ def _build_material(matlib, mat_name, channels, cfg, add_controls=False,
                         p.setExpression('ch("../%s")' % pn)
                     except Exception:
                         pass
+
+        # Same for roughness: without a roughness map there is nothing to
+        # multiply, so promote the surface value itself. The default is the
+        # surface's own, so enabling controls doesn't change the look.
+        roughness_had_map = any(
+            cfg.channel(ch_name).get("mtlx_input") == "specular_roughness"
+            for ch_name in channels)
+        p = surface.parm("specular_roughness")
+        if not roughness_had_map and p is not None:
+            pn = _promote_float(sub, "roughness_value", "Roughness",
+                                default=p.eval(), minv=0.0, maxv=1.0)
+            if pn:
+                try:
+                    p.setExpression('ch("../%s")' % pn)
+                except Exception:
+                    pass
 
     try:
         sub.setMaterialFlag(True)
@@ -816,7 +876,7 @@ def _prop_name_from_stage(anchor):
 
 def build(anchor_path, textures_folder, scope_path="", assign=True,
           config_path=None, prop_name=None, add_controls=False,
-          generate_normals=False):
+          generate_normals=False, alpha_opacity=False):
     """Build materials for one prop.
 
     anchor_path     : LOP node in /stage to chain matlib/assign below
@@ -828,6 +888,8 @@ def build(anchor_path, textures_folder, scope_path="", assign=True,
                       mesh name). Falls back to the textures folder name.
     generate_normals: derive a normal from the base color map for materials
                       that have no normal/bump map of their own.
+    alpha_opacity   : use the alpha channel of the base color map as opacity
+                      for materials that have no opacity map of their own.
     Returns a stats dict for the UI.
     """
     cfg, cfg_warn = _config.load_config(config_path)
@@ -882,12 +944,16 @@ def build(anchor_path, textures_folder, scope_path="", assign=True,
     # matching and the report); node_name_for maps each to the node Houdini
     # actually made, which is also the USD prim name.
     created = []
+    alpha_materials = []
     node_name_for = {}
     for mat_name in sorted(materials.keys()):
         sub = _build_material(matlib, mat_name, materials[mat_name], cfg,
                               add_controls=add_controls,
-                              generate_normals=generate_normals)
+                              generate_normals=generate_normals,
+                              alpha_opacity=alpha_opacity)
         created.append(mat_name)
+        if sub.node("opacity_from_alpha") is not None:
+            alpha_materials.append(mat_name)
         node_name_for[mat_name] = sub.name()
 
     matlib.layoutChildren()
@@ -971,6 +1037,7 @@ def build(anchor_path, textures_folder, scope_path="", assign=True,
         "preset_created": preset_created,
         "assigned": assigned,
         "guessed": sorted(set(guessed)),
+        "alpha_opacity": alpha_materials,
         "unmatched": sorted(set(unmatched)),
         "unused_materials": unused,
         "unrecognised": unrecognised,

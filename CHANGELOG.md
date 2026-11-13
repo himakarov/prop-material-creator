@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.6.0
+- New option "Use base color alpha as opacity" for decals, foliage and water whose transparency lives in the alpha channel of the color map. The alpha is wired to the surface opacity only for materials that have no opacity map of their own and whose alpha is not fully opaque (an all-white alpha is skipped). The build report lists the materials that got it.
+- Roughness control is now always added when intensity controls are on: with a roughness map it's a "Roughness Mult" as before; without one, a "Roughness" parameter drives the surface value directly (default is the surface's own, so the look doesn't change until you turn it).
+
 ## 1.5.0
 - Locations: slots and textures named differently now match. A new last matching level compares the words and the index number regardless of order (mtl_wall6 <-> 6_wall, mtl_props10 <-> 10_atlas_props, mtl_sand <-> sand). When both names carry a number the numbers must agree. Pairs found this way are listed in the build report under "Matched by similar name - please check".
 - Fixed materials whose name starts with a digit collapsing into one USD material (1_atlas_props and 9_atlas_props became the same prim). Such materials now get a "mat_" prefix (mat_6_wall).

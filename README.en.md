@@ -93,6 +93,13 @@ map but no normal/bump map of its own gets a normal derived from the color's
 luminance (`mtlxbump`). Together with **Add intensity controls** the material
 gets a **Normal Strength** parameter (default 0.02).
 
+## Opacity from color alpha
+
+The **Use base color alpha as opacity** checkbox: for decals, foliage and
+water whose transparency lives in the alpha channel of the color map. The
+alpha is wired to opacity only where the material has no opacity map of its
+own and the alpha is not fully opaque.
+
 ## Updating
 
 The **Check for updates** button pulls the latest version from GitHub. If a
